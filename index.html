@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>FeiraMapa — planeje a distribuição das barracas</title>
+  <meta name="description" content="Monte o mapa da sua feira, evento ou exposição: posicione barracas, tomadas, entradas e corredores e veja os problemas antes da montagem.">
+  <meta name="theme-color" content="#2f6f4e">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%232f6f4e'/%3E%3Cpath d='M12 26l5-10h30l5 10z' fill='%23f2c46d'/%3E%3Crect x='16' y='26' width='32' height='22' fill='%23fffdf8'/%3E%3Crect x='24' y='34' width='16' height='14' fill='%23c8553d'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <noscript><p style="padding:2rem;font-family:sans-serif">O FeiraMapa precisa de JavaScript para funcionar.</p></noscript>
+  <div id="toasts" role="status" aria-live="polite"></div>
+
+  <!-- Tela inicial: lista de mapas -->
+  <main id="view-home" class="home" hidden></main>
+
+  <!-- Editor -->
+  <div id="view-editor" class="editor" hidden>
+    <header class="ed-top">
+      <button class="btn icon" id="btn-home" title="Voltar para meus mapas" aria-label="Voltar para meus mapas">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+      </button>
+      <input id="map-name" class="name-input" aria-label="Nome da feira" maxlength="100" autocomplete="off">
+      <span id="save-state" class="save-state" aria-live="polite"></span>
+      <span class="spacer"></span>
+      <div class="group" id="grp-history">
+        <button class="btn icon" id="btn-undo" title="Desfazer (Ctrl+Z)" aria-label="Desfazer"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7L4 12l5 5M4 12h10a6 6 0 010 12" transform="translate(0 -4)"/></svg></button>
+        <button class="btn icon" id="btn-redo" title="Refazer (Ctrl+Shift+Z)" aria-label="Refazer"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 7l5 5-5 5M20 12H10a6 6 0 000 12" transform="translate(0 -4)"/></svg></button>
+      </div>
+      <div class="group">
+        <button class="btn icon" id="btn-zoom-out" title="Diminuir zoom (-)" aria-label="Diminuir zoom"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+        <button class="btn icon" id="btn-fit" title="Ajustar o mapa à tela (0)" aria-label="Ajustar à tela"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+        <button class="btn icon" id="btn-zoom-in" title="Aumentar zoom (+)" aria-label="Aumentar zoom"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+      </div>
+      <button class="btn" id="btn-grid" aria-pressed="true" title="Mostrar ou esconder a grade">Grade</button>
+      <details class="menu" id="menu-export">
+        <summary class="btn primary">Compartilhar <svg viewBox="0 0 24 24" aria-hidden="true" class="chev"><path d="M7 10l5 5 5-5"/></svg></summary>
+        <div class="menu-list" role="menu">
+          <button role="menuitem" data-act="link">Link para visualizar</button>
+          <button role="menuitem" data-act="print">Imprimir / salvar PDF</button>
+          <button role="menuitem" data-act="png">Baixar imagem (PNG)</button>
+          <button role="menuitem" data-act="json">Baixar arquivo do mapa (.json)</button>
+        </div>
+      </details>
+      <button class="btn icon" id="btn-help" title="Ajuda e atalhos" aria-label="Ajuda e atalhos"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 114 2c-.9.6-1.5 1.1-1.5 2.2M12 17v.01"/></svg></button>
+      <button class="btn icon only-mobile" id="btn-panel" title="Painel" aria-label="Abrir ou fechar painel" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+    </header>
+
+    <div id="readonly-banner" class="banner" hidden>
+      <span>Você está vendo um mapa compartilhado (somente leitura).</span>
+      <button class="btn primary small" id="btn-save-copy">Salvar uma cópia para editar</button>
+    </div>
+
+    <nav class="toolbar" id="toolbar" aria-label="Ferramentas"></nav>
+
+    <div class="stage" id="stage">
+      <svg id="canvas" role="application" aria-label="Mapa da feira"></svg>
+      <div class="hint" id="tool-hint"></div>
+    </div>
+
+    <aside class="panel" id="panel" aria-label="Painel lateral">
+      <div class="tabs" role="tablist" id="tabs">
+        <button role="tab" data-tab="item" aria-selected="true">Item</button>
+        <button role="tab" data-tab="stalls" aria-selected="false">Barracas</button>
+        <button role="tab" data-tab="issues" aria-selected="false">Avisos <span class="badge" id="badge-issues" hidden>0</span></button>
+        <button role="tab" data-tab="map" aria-selected="false">Mapa</button>
+      </div>
+      <section class="pane" id="pane-item" role="tabpanel"></section>
+      <section class="pane" id="pane-stalls" role="tabpanel" hidden></section>
+      <section class="pane" id="pane-issues" role="tabpanel" hidden></section>
+      <section class="pane" id="pane-map" role="tabpanel" hidden></section>
+    </aside>
+  </div>
+
+  <!-- Diálogos -->
+  <dialog id="dlg-new">
+    <form method="dialog" id="form-new">
+      <h2>Novo mapa de feira</h2>
+      <label class="field"><span>Nome da feira</span>
+        <input id="new-name" required maxlength="100" placeholder="Ex.: Feira de Artesanato — Praça Central" autocomplete="off"></label>
+      <fieldset class="seg">
+        <legend>Como criar o mapa do local?</legend>
+        <label><input type="radio" name="new-mode" value="draw" checked><span><strong>Desenhar o local</strong><small>Comece com uma área em branco e desenhe com formas simples.</small></span></label>
+        <label><input type="radio" name="new-mode" value="photo"><span><strong>Usar uma foto do local</strong><small>Foto vista de cima, usada como fundo do mapa.</small></span></label>
+      </fieldset>
+      <div id="new-draw" class="row2">
+        <label class="field"><span>Largura (m)</span><input id="new-w" type="number" min="1" max="2000" step="0.5" value="40"></label>
+        <label class="field"><span>Comprimento (m)</span><input id="new-h" type="number" min="1" max="2000" step="0.5" value="25"></label>
+      </div>
+      <div id="new-photo" hidden>
+        <label class="field"><span>Foto do local</span><input id="new-file" type="file" accept="image/*"></label>
+        <img id="new-preview" alt="Pré-visualização da foto" hidden>
+        <label class="field"><span>Largura real do local na foto (m)</span><input id="new-pw" type="number" min="1" max="2000" step="0.5" value="40"></label>
+        <p class="muted small" id="new-photo-note">Escolha uma foto. O comprimento é calculado pela proporção da imagem; você pode ajustar depois.</p>
+      </div>
+      <menu class="dlg-actions">
+        <button class="btn" value="cancel" formnovalidate>Cancelar</button>
+        <button class="btn primary" id="new-ok" value="ok">Criar mapa</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-text">
+    <form method="dialog" id="form-text">
+      <h2 id="text-title"></h2>
+      <label class="field"><span id="text-label"></span><input id="text-input" required maxlength="100" autocomplete="off"></label>
+      <menu class="dlg-actions">
+        <button class="btn" value="cancel" formnovalidate>Cancelar</button>
+        <button class="btn primary" value="ok" id="text-ok">OK</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-share">
+    <form method="dialog">
+      <h2>Link para visualizar</h2>
+      <p class="muted">Quem abrir o link vê o mapa e pode medir distâncias e buscar barracas, mas não altera o seu original. Pode salvar uma cópia própria.</p>
+      <div class="copy-row">
+        <input id="share-url" readonly aria-label="Link de compartilhamento">
+        <button type="button" class="btn primary" id="share-copy">Copiar</button>
+      </div>
+      <p class="small" id="share-note"></p>
+      <menu class="dlg-actions"><button class="btn" value="close">Fechar</button></menu>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-help">
+    <form method="dialog">
+      <h2>Como usar</h2>
+      <div class="help-grid">
+        <div>
+          <h3>Montando o mapa</h3>
+          <ol>
+            <li>Desenhe o local (retângulos, círculos, paredes) ou use uma foto como fundo.</li>
+            <li>Marque <strong>corredores</strong> e <strong>áreas proibidas</strong> (árvores, banheiros, saídas de emergência…).</li>
+            <li>Adicione <strong>barracas</strong>: clique, ou arraste para definir o tamanho. Depois mova, gire e redimensione.</li>
+            <li>Coloque <strong>tomadas</strong> e <strong>entradas/saídas</strong>.</li>
+            <li>Confira a aba <strong>Avisos</strong> e compartilhe.</li>
+          </ol>
+        </div>
+        <div>
+          <h3>Atalhos</h3>
+          <dl class="keys">
+            <dt>V</dt><dd>Selecionar</dd><dt>B</dt><dd>Barraca</dd><dt>R / C</dt><dd>Retângulo / círculo</dd>
+            <dt>W / L</dt><dd>Parede / linha</dd><dt>A / X</dt><dd>Corredor / área proibida</dd>
+            <dt>T / E</dt><dd>Tomada / entrada ou saída</dd><dt>M</dt><dd>Medir distância</dd>
+            <dt>[ ]</dt><dd>Girar 15°</dd><dt>Setas</dt><dd>Mover (Shift = 1 m)</dd>
+            <dt>Ctrl+D</dt><dd>Duplicar</dd><dt>Ctrl+Z</dt><dd>Desfazer</dd><dt>Delete</dt><dd>Excluir</dd>
+            <dt>Espaço</dt><dd>Segure e arraste para mover a tela</dd><dt>Shift</dt><dd>Ao criar, mantém a ferramenta; em linhas, trava o ângulo</dd>
+          </dl>
+        </div>
+      </div>
+      <p class="muted small">Seus mapas ficam salvos neste navegador, neste aparelho. Para guardar um backup ou levar para outro lugar, use <strong>Compartilhar → Baixar arquivo do mapa</strong>.</p>
+      <menu class="dlg-actions"><button class="btn primary" value="close">Entendi</button></menu>
+    </form>
+  </dialog>
+
+  <script src="js/geometry.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/editor.js"></script>
+  <script src="js/share.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
